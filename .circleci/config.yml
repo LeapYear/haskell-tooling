@@ -1,0 +1,22 @@
+jobs:
+  build-and-push:
+    executor: docker/docker
+    steps:
+      - setup_remote_docker
+      - checkout
+      - docker/check
+      - docker/build:
+          image: leapyear1/haskell-ide-engine
+      - docker/push:
+          digest-path: /tmp/digest.txt
+          image: leapyear1/haskell-ide-engine
+      - run:
+          command: |
+            echo "Digest is: $(</tmp/digest.txt)"
+orbs:
+  docker: circleci/docker@0.5.20
+version: 2.1
+workflows:
+  commit:
+    jobs:
+      - build-and-push
