@@ -1,22 +1,62 @@
-jobs:
-  build-and-push:
-    executor: docker/docker
-    steps:
-      - setup_remote_docker
-      - checkout
-      - docker/check
-      - docker/build:
-          image: leapyear1/haskell-ide-engine
-      - docker/push:
-          digest-path: /tmp/digest.txt
-          image: leapyear1/haskell-ide-engine
-      - run:
-          command: |
-            echo "Digest is: $(</tmp/digest.txt)"
-orbs:
-  docker: circleci/docker@0.5.20
 version: 2.1
+jobs:
+  haskell-tooling-centos-7:
+    working_directory: ~/build
+    environment:
+      STACK_RESOLVER: lts-14.20
+    docker:
+      - image: centos:7
+    steps:
+      - run: yum install -y zlib-devel ncurses-devel
+      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - restore_cache:
+          keys:
+            - v1-stack-cache-{{ arch }}-{{ .Environment.STACK_RESOLVER }}-haskell-tooling
+      - run: stack --resolver ${STACK_RESOLVER} setup
+      - run: stack --resolver ${STACK_RESOLVER} install hlint stylish-haskell hoogle brittany thrift hprotoc weeder -j1
+      - save_cache:
+          key: v1-stack-cache-{{ arch }}-{{ .Environment.STACK_RESOLVER }}-haskell-tooling
+          paths: &cache_paths
+            - ~/.stack
+      - store_artifacts:
+          path: ~/.local/bin
+          destination: bin
+  haskell-ide-engine-centos-7:
+    working_directory: ~/build
+    docker:
+      - image: centos:7
+    steps:
+      - run: yum install -y zlib-devel ncurses-devel
+      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - restore_cache:
+          keys:
+            - v1-stack-cache-{{ arch }}-haskell-ide-engine
+      - run: |
+          git clone https://github.com/haskell/haskell-ide-engine --recurse-submodules
+          cd haskell-ide-engine
+          git checkout 1.0.0.0
+          stack --stack-yaml stack-8.6.4.yaml -j1 install happy hoogle
+          stack --stack-yaml stack-8.6.4.yaml -j1 install
+          stack --stack-yaml stack-8.6.4.yaml exec hoogle generate
+      - save_cache:
+          key: v1-stack-cache-{{ arch }}-haskell-ide-engine
+          paths: &cache_paths
+            - ~/.stack
+            - ~/.cache
+            - ~/.hoogle
+            - ~/build/haskell-ide-engine/.stack-work
+            - ~/build/haskell-ide-engine/hie-plugin-api/.stack-work
+            - ~/build/haskell-ide-engine/submodules/HaRe/.stack-work
+            - ~/build/haskell-ide-engine/submodules/brittany/.stack-work
+            - ~/build/haskell-ide-engine/submodules/ghc-mod/core/.stack-work
+            - ~/build/haskell-ide-engine/submodules/ghc-mod/.stack-work
+            - ~/build/haskell-ide-engine/submodules/cabal-helper/.stack-work
+      - store_artifacts:
+          path: ~/.local/bin
+          destination: bin
+
 workflows:
-  commit:
+  centos7:
     jobs:
-      - build-and-push
+      - haskell-ide-engine-centos-7
+      - haskell-tooling-centos-7
